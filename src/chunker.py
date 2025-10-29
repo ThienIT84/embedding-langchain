@@ -27,7 +27,6 @@ _splitter = RecursiveCharacterTextSplitter(
     separators=["\n\n", "\n", " ", ""],
 )
 
-
 def split_chunks(chunks: Iterable[DocumentChunk]) -> List[TextChunk]:
     """Tách lần lượt từng DocumentChunk thành các TextChunk nhỏ hơn."""
     output: List[TextChunk] = []

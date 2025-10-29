@@ -71,4 +71,5 @@ def process_document(document_id: str) -> None:
         raise
     finally:
         if file_path and file_path.exists():
+            # unlink xóa file tạm thời
             file_path.unlink(missing_ok=True)

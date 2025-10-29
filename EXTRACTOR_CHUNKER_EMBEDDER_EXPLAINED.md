@@ -511,7 +511,7 @@ def split_chunks(chunks: Iterable[DocumentChunk]) -> List[TextChunk]:
 
 #### **Dòng 3: `pieces = _splitter.split_text(chunk.text)`**
 
-| Phần | Ý Nghĩa |
+| Phần|Ý Nghĩa |
 |-----|--------|
 | `_splitter.split_text(...)` | Gọi công cụ chia text |
 | `chunk.text` | Lấy text từ chunk |
@@ -717,7 +717,7 @@ def _get_model() -> SentenceTransformer:
 #### **`global _model`**
 
 | Phần | Ý Nghĩa |
-|-----|--------|
+|----- |--------|
 | `global` | Từ khóa: cho phép sửa biến global |
 | `_model` | Tên biến global cần sửa |
 
