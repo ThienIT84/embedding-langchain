@@ -49,6 +49,10 @@ tmp/
 *.tmp
 *.log
 
+# Markdown files (except README)
+*.md
+!README.md
+
 # Cache
 .cache
 .pytest_cache/
@@ -64,5 +68,3 @@ dmypy.json
 # Temporary model downloads (optional - if too large)
 # models/
 # Downloads/
-*.md
-!README.md
