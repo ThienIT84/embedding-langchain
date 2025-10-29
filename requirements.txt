@@ -1,0 +1,11 @@
+supabase>=2.5.0
+python-dotenv>=1.0.1
+langchain-text-splitters>=0.1.2
+pypdf>=4.2.0
+sentence-transformers>=3.0.1
+# Pin NumPy to <2 to avoid ABI breaks with native deps (Torch/TF) on many setups
+numpy<2.0.0
+tqdm>=4.66.0
+requests>=2.32.3
+fastapi>=0.115.0
+uvicorn>=0.30.0
