@@ -3,6 +3,23 @@ from __future__ import annotations
 """Nhận document_id từ dòng lệnh và kích hoạt pipeline xử lý embedding."""
 
 import argparse
+import sys
+from pathlib import Path
+
+# Đảm bảo project root (Embedding_langchain) được thêm vào sys.path
+# Để có thể import các module từ src.*
+THIS_FILE = Path(__file__).resolve()
+PROJECT_ROOT = THIS_FILE.parent.parent  # .../Embedding_langchain
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+# Load .env file từ thư mục Embedding_langchain
+try:
+    from dotenv import load_dotenv  # type: ignore
+    load_dotenv(dotenv_path=PROJECT_ROOT / ".env")
+except Exception:
+    # dotenv là tuỳ chọn; config.py có thể đọc env từ process
+    pass
 
 from src.pipeline import process_document
 
