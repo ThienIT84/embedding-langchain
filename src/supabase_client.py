@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -6,7 +7,9 @@ from supabase import create_client, Client
 from postgrest.exceptions import APIError
 
 from .config import settings
+from .retry_utils import retry_with_backoff
 
+logger = logging.getLogger(__name__)
 
 """Tiện ích giao tiếp với Supabase: tải file, cập nhật trạng thái, ghi embeddings."""
 
@@ -22,8 +25,9 @@ def get_supabase_client() -> Client:
     return _supabase_client
 
 
+@retry_with_backoff(max_retries=3, initial_delay=1.0)
 def download_file(file_path: str, destination: Path) -> Path:
-    """Tải tệp từ bucket Supabase về đường dẫn cục bộ được chỉ định."""
+    """Tải tệp từ bucket Supabase về đường dẫn cục bộ được chỉ định (với retry logic)."""
     client = get_supabase_client()
     response = client.storage.from_(settings.supabase_bucket).download(file_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -75,9 +79,17 @@ def delete_existing_embeddings(document_id: str) -> None:
     client.table("document_embeddings").delete().eq("document_id", document_id).execute()
 
 
+@retry_with_backoff(max_retries=3, initial_delay=1.0, exceptions=(APIError, Exception))
 def insert_embeddings(rows: list[dict[str, Any]]) -> None:
-    """Chèn danh sách embedding đã chuẩn hoá vào bảng document_embeddings."""
+    """Chèn danh sách embedding với retry logic và batch processing."""
     if not rows:
         return
+    
     client = get_supabase_client()
-    client.table("document_embeddings").insert(rows).execute()
+    
+    # Batch insert để tránh timeout với dataset lớn
+    BATCH_SIZE = 100
+    for i in range(0, len(rows), BATCH_SIZE):
+        batch = rows[i:i + BATCH_SIZE]
+        client.table("document_embeddings").insert(batch).execute()
+        logger.info(f"Inserted batch {i//BATCH_SIZE + 1}/{(len(rows)-1)//BATCH_SIZE + 1}: {len(batch)} embeddings")

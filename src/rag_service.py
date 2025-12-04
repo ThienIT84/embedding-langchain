@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from time import perf_counter
 from typing import Any, Dict
+from pydantic import ValidationError
 
 from .llm_client import LLMResponse, generate_answer
 from .prompt_builder import build_rag_prompt
 from .retriever import RetrievedChunk, retrieve_similar_chunks, retrieve_similar_chunks_by_user
+from .validators import RAGQueryRequest
 
 """Orchestrator kết hợp retrieval + prompt + LLM để tạo câu trả lời cuối."""
 
@@ -51,22 +53,38 @@ def rag_query(
         - metadata: Model name, thời gian xử lý, số lượng chunks
         - prompt: Full prompt đã gửi cho LLM (để debug)
         - raw_llm_response: Raw response từ LLM (để debug)
+    
+    Raises:
+        ValueError: Nếu input validation thất bại
     """
+    # Validate input với Pydantic
+    try:
+        validated = RAGQueryRequest(
+            query=query,
+            user_id=user_id,
+            top_k=top_k,
+            system_prompt=system_prompt
+        )
+    except ValidationError as e:
+        raise ValueError(f"Invalid input parameters: {e}") from e
+    
     # Đo thời gian xử lý toàn bộ pipeline
     start = perf_counter()
 
     # Bước 1: RETRIEVAL - Tìm chunks tương đồng từ TẤT CẢ documents của user
-    # Gọi function mới: retrieve_similar_chunks_by_user (thay vì retrieve_similar_chunks)
-    # Function này sẽ gọi RPC 'match_embeddings_by_user' trong Supabase
+    # Sử dụng validated data
     retrieved_chunks = retrieve_similar_chunks_by_user(
-        query=query, 
-        user_id=user_id,  # ĐÃ ĐỔI: Truyền user_id thay vì document_id
-        top_k=top_k
+        query=validated.query,
+        user_id=validated.user_id,
+        top_k=validated.top_k
     )
     
     # Bước 2: PROMPT BUILDING - Ghép query + chunks thành prompt
-    # Sử dụng template từ prompt_builder.py
-    prompt = build_rag_prompt(query=query, chunks=retrieved_chunks, system_prompt=system_prompt)
+    prompt = build_rag_prompt(
+        query=validated.query,
+        chunks=retrieved_chunks,
+        system_prompt=validated.system_prompt
+    )
     
     # Bước 3: LLM GENERATION - Gửi prompt tới Ollama để sinh câu trả lời
     # Model: llama3 (local), temperature=0.7, max_tokens=1000

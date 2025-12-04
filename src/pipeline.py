@@ -49,6 +49,8 @@ def process_document(document_id: str) -> None:
     file_path: Path | None = None
 
     try:
+
+        
         remote_path = metadata.get("file_path")
         if not remote_path:
             raise ValueError(f"Document {document_id} is missing file_path in Supabase")

@@ -6,6 +6,7 @@ from typing import Any
 import requests
 
 from .config import settings
+from .retry_utils import retry_with_backoff
 
 """Gọi Ollama local để sinh câu trả lời dựa trên prompt đã chuẩn bị."""
 
@@ -23,6 +24,12 @@ class LLMClientError(RuntimeError):
     """Báo lỗi khi gọi Ollama thất bại."""
 
 
+@retry_with_backoff(
+    max_retries=3,
+    initial_delay=2.0,
+    backoff_factor=2.0,
+    exceptions=(requests.RequestException, requests.Timeout)
+)
 def generate_answer(prompt: str, model: str | None = None, timeout: int = 120) -> LLMResponse:
     """Gọi Ollama generate API và trả về câu trả lời."""
     if not prompt.strip():
