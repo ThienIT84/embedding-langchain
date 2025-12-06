@@ -27,6 +27,8 @@ def rag_query(
     user_id: str,  # ĐÃ ĐỔI: Từ document_id → user_id để search toàn bộ documents của user
     top_k: int = 5,
     system_prompt: str | None = None,
+    model: str | None = None,
+    mode: str = "fast",  # NEW: "fast" hoặc "deepthink"
 ) -> Dict[str, Any]:
     """
     Thực hiện đầy đủ vòng RAG và trả về answer, sources, metadata.
@@ -63,7 +65,8 @@ def rag_query(
             query=query,
             user_id=user_id,
             top_k=top_k,
-            system_prompt=system_prompt
+            system_prompt=system_prompt,
+            mode=mode
         )
     except ValidationError as e:
         raise ValueError(f"Invalid input parameters: {e}") from e
@@ -83,12 +86,13 @@ def rag_query(
     prompt = build_rag_prompt(
         query=validated.query,
         chunks=retrieved_chunks,
-        system_prompt=validated.system_prompt
+        system_prompt=validated.system_prompt,
+        mode=validated.mode  # Use validated mode
     )
     
     # Bước 3: LLM GENERATION - Gửi prompt tới Ollama để sinh câu trả lời
     # Model: llama3 (local), temperature=0.7, max_tokens=1000
-    llm_response: LLMResponse = generate_answer(prompt=prompt)
+    llm_response: LLMResponse = generate_answer(prompt=prompt, model=model)
 
     # Tính tổng thời gian xử lý (ms)
     elapsed_ms = (perf_counter() - start) * 1000

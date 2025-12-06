@@ -24,6 +24,7 @@ class RAGQueryByUserRequest(BaseModel):
     model: Optional[str] = Field("llama3", description="Tên model Ollama")
     top_k: int = Field(5, ge=1, le=20, description="Số đoạn context lấy ra")
     system_prompt: Optional[str] = Field(None, description="Ghi đè system prompt (tùy chọn)")
+    mode: str = Field("fast", description="Response mode: 'fast' (ngắn gọn) hoặc 'deepthink' (chi tiết)")
 
 
 class SourceItem(BaseModel):
@@ -89,6 +90,8 @@ async def query_by_user(payload: RAGQueryByUserRequest) -> Dict[str, Any]:
             user_id=payload.user_id,
             top_k=payload.top_k,
             system_prompt=payload.system_prompt,
+            model=payload.model,
+            mode=payload.mode,  # Pass mode to rag_service
         )
         return {
             "answer": result["answer"],
@@ -99,3 +102,4 @@ async def query_by_user(payload: RAGQueryByUserRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"RAG lỗi xử lý: {exc}") from exc
+

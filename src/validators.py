@@ -9,6 +9,7 @@ class RAGQueryRequest(BaseModel):
     user_id: str = Field(..., description="UUID của user (từ JWT token)")
     top_k: int = Field(default=5, ge=1, le=20, description="Số chunks muốn retrieve")
     system_prompt: Optional[str] = Field(None, max_length=1000, description="Custom system prompt")
+    mode: str = Field(default="fast", description="Response mode: 'fast' hoặc 'deepthink'")
     
     @field_validator('query')
     @classmethod
@@ -27,6 +28,15 @@ class RAGQueryRequest(BaseModel):
         except ValueError:
             raise ValueError('user_id phải là UUID hợp lệ')
         return v
+    
+    @field_validator('mode')
+    @classmethod
+    def validate_mode(cls, v: str) -> str:
+        """Validate mode chỉ có thể là 'fast' hoặc 'deepthink'."""
+        allowed_modes = ['fast', 'deepthink']
+        if v.lower() not in allowed_modes:
+            raise ValueError(f"mode phải là một trong: {', '.join(allowed_modes)}")
+        return v.lower()
     
     @field_validator('system_prompt')
     @classmethod

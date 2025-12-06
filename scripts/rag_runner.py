@@ -57,6 +57,7 @@ def main() -> int:
         user_id = payload.get("user_id")  # ĐÃ ĐỔI: Từ document_id → user_id
         top_k = payload.get("top_k", 5)
         system_prompt = payload.get("system_prompt")
+        model = payload.get("model")
 
         # Validate query - phải có và không rỗng
         if not isinstance(query, str) or not query.strip():
@@ -86,6 +87,7 @@ def main() -> int:
             user_id=user_id,  # ĐÃ ĐỔI: Truyền user_id thay vì document_id
             top_k=top_k,
             system_prompt=system_prompt,
+            model=model,
         )
 
         # Đảm bảo result có thể serialize thành JSON

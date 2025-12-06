@@ -49,6 +49,18 @@ tmp/
 *.tmp
 *.log
 
+# Testing
+.pytest_cache/
+.coverage
+.coveragerc
+htmlcov/
+.tox/
+.hypothesis/
+
+# Documentation (old versions)
+docs/README_OLD.md
+
+
 # Cache
 .cache
 .pytest_cache/

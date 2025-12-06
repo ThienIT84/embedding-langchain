@@ -41,13 +41,12 @@ def _prepare_records(document_id: str, embeddings: List[EmbeddingResult]) -> Lis
     return records
 
 
-def process_document(document_id: str) -> None:
+def process_document(document_id: str, job_id: str = None) -> None:
     """Xử lý toàn bộ vòng đời ingest embedding cho một tài liệu duy nhất."""
     metadata = fetch_document_metadata(document_id)
     upsert_embedding_status(document_id=document_id, status="processing")
 
     file_path: Path | None = None
-
     try:
 
         
@@ -60,6 +59,11 @@ def process_document(document_id: str) -> None:
         file_path = download_file(remote_path, file_path)
 
         text_chunks = _load_document(file_path)
+        
+        # Gửi progress tracking nếu có job_id
+        if job_id:
+            print(f"PROGRESS:10:0:{len(text_chunks)}")
+        
         embeddings = embed_chunks(text_chunks)
         records = _prepare_records(document_id, embeddings)
 
@@ -68,6 +72,11 @@ def process_document(document_id: str) -> None:
             insert_embeddings(records)
 
         upsert_embedding_status(document_id=document_id, status="completed")
+        
+        # Gửi progress tracking hoàn thành nếu có job_id
+        if job_id:
+            print(f"PROGRESS:100:{len(text_chunks)}:{len(text_chunks)}")
+            
     except Exception as exc:  # noqa: BLE001 - log and re-raise after marking failed
         upsert_embedding_status(document_id=document_id, status="failed", error_message=str(exc))
         raise
