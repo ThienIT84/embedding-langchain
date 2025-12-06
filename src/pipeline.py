@@ -58,7 +58,7 @@ def process_document(document_id: str, job_id: str = None) -> None:
         file_path = settings.temp_dir / filename
         file_path = download_file(remote_path, file_path)
 
-        text_chunks = _load_document(file_path)
+        text_chunks = list(_load_document(file_path))
         
         # Gửi progress tracking nếu có job_id
         if job_id:
