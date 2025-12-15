@@ -1,19 +1,28 @@
+# === Database (Supabase) ===
 supabase>=2.5.0
-python-dotenv>=1.0.1
+
+# === AI & RAG Processing ===
 langchain-text-splitters>=0.1.2
 pypdf>=4.2.0
+
+# Thư viện này sẽ tự động kéo PyTorch về. 
+# (Nhưng cần cài PyTorch CUDA thủ công trước nếu muốn dùng GPU, xem hướng dẫn dưới)
 sentence-transformers>=3.0.1
-# Pin NumPy to <2 to avoid ABI breaks with native deps (Torch/TF) on many setups
+
+# === Fix Lỗi & Ổn định (QUAN TRỌNG) ===
+# Giữ NumPy < 2 để tránh crash các thư viện AI cũ
 numpy<2.0.0
+
+# Khóa bản này để sửa lỗi "AttributeError: GetPrototype" bạn vừa gặp
+# Nếu project cần mediapipe mới hơn, có thể thử đổi thành: protobuf>=3.20.3,<5.0.0
+protobuf==3.20.3
+
+# === Tiện ích ===
 tqdm>=4.66.0
-requests>=2.32.3
-fastapi>=0.115.0
-uvicorn>=0.30.0
-
-# Input validation
-pydantic>=2.0.0
-
-# Testing dependencies
+langchain-community
+tavily-python
+pyjwt>=2.8.0
+# === Testing ===
 pytest>=7.4.0
 pytest-cov>=4.1.0
 pytest-mock>=3.12.0

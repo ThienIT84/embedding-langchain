@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
-from typing import Iterable, List
+from dataclasses import dataclass, field
+from typing import Iterable, List, Dict, Any, Optional
 
 import numpy as np
 
@@ -13,7 +13,7 @@ from .supabase_client import get_supabase_client
 """Truy vấn Supabase để lấy các đoạn văn bản liên quan nhất tới câu hỏi."""
 
 
-@dataclass(slots=True)
+@dataclass
 class RetrievedChunk:
     """Đại diện cho một đoạn văn bản được truy xuất cùng điểm tương đồng."""
 
@@ -21,6 +21,7 @@ class RetrievedChunk:
     chunk_index: int
     page_number: int | None
     similarity: float
+    metadata: Dict[str, Any] = field(default_factory=dict)  # Thêm metadata field
 
 
 def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
@@ -89,13 +90,13 @@ def retrieve_similar_chunks(query: str, document_id: str, top_k: int = 5) -> Lis
 
 def retrieve_similar_chunks_by_user(query: str, user_id: str, top_k: int = 5) -> List[RetrievedChunk]:
     """
-    Lấy top_k đoạn văn bản gần nhất với truy vấn từ TẤT CẢ documents của user.
-    
-    Thay vì search trong 1 document cụ thể, function này:
-    1. Encode câu hỏi thành vector embedding (768 chiều)
-    2. Gọi RPC function 'match_embeddings_by_user' trong Supabase
-    3. RPC function sẽ tìm các chunks tương đồng nhất trong TẤT CẢ documents của user
-    4. Trả về danh sách chunks đã được sort theo similarity (cao → thấp)
+    QUY TRÌNH INTERNAL RETRIEVAL:
+    1. Input: query text và user_id.
+    2. Embedding: Chuyển query text thành vector (dùng model giống lúc ingest).
+    3. RPC Call: Gọi function 'match_embeddings_by_user' trong Supabase.
+       - Function này thực hiện Vector Similarity Search (Cosine Distance).
+       - Chỉ tìm trong các documents do user_id tạo.
+    4. Return: Danh sách các chunks tương đồng nhất.
     
     Args:
         query: Câu hỏi của người dùng (VD: "Khái niệm OOP là gì?")
@@ -111,18 +112,18 @@ def retrieve_similar_chunks_by_user(query: str, user_id: str, top_k: int = 5) ->
     if not user_id.strip():
         raise ValueError("user_id không được để trống")
 
-    # Bước 1: Encode câu hỏi thành vector embedding
+    # --- BƯỚC 1: Encode câu hỏi thành vector embedding ---
     # Sử dụng sentence-transformers model (paraphrase-multilingual-mpnet-base-v2)
     # Output: vector 768 chiều
     model = _get_model()
     query_vector = model.encode([query])[0]  # Encode 1 câu → lấy vector đầu tiên
     query_vector = np.asarray(query_vector, dtype=np.float32)  # Chuyển sang float32
     
-    # Bước 2: Chuyển numpy array thành Python list để gửi qua RPC
+    # --- BƯỚC 2: Chuyển numpy array thành Python list để gửi qua RPC ---
     # Supabase RPC cần list, không nhận numpy array
     query_embedding_list = query_vector.tolist()
     
-    # Bước 3: Gọi RPC function trong Supabase
+    # --- BƯỚC 3: Gọi RPC function trong Supabase ---
     # RPC function sẽ:
     # - JOIN bảng document_embeddings với documents
     # - Filter theo created_by = user_id
@@ -139,13 +140,13 @@ def retrieve_similar_chunks_by_user(query: str, user_id: str, top_k: int = 5) ->
         }
     ).execute()
     
-    # Bước 4: Parse kết quả từ RPC
+    # --- BƯỚC 4: Parse kết quả từ RPC ---
     rows = response.data or []
     if not rows:
         # Không tìm thấy documents nào của user hoặc không có chunk tương đồng
         return []
     
-    # Bước 5: Chuyển đổi kết quả thành RetrievedChunk objects
+    # --- BƯỚC 5: Chuyển đổi kết quả thành RetrievedChunk objects ---
     # RPC đã tính similarity và sort rồi, chỉ cần parse data
     chunks: list[RetrievedChunk] = []
     for row in rows:
@@ -155,6 +156,82 @@ def retrieve_similar_chunks_by_user(query: str, user_id: str, top_k: int = 5) ->
                 chunk_index=row.get("chunk_index", 0) or 0,  # Thứ tự chunk trong document
                 page_number=row.get("page_number"),       # Số trang (có thể None)
                 similarity=row.get("similarity", 0.0) or 0.0,  # Điểm tương đồng (0-1)
+                metadata={
+                    "document_id": row.get("document_id"),
+                    "document_title": row.get("document_title"),
+                    "source": "internal"
+                }
+            )
+        )
+    
+    return chunks
+
+
+def retrieve_similar_chunks_by_document(
+    query: str, 
+    document_id: str, 
+    top_k: int = 5
+) -> List[RetrievedChunk]:
+    """
+    Tìm chunks CHỈ trong 1 document cụ thể (Metadata Filtering).
+    
+    Use case: User đang chat về 1 file cụ thể
+    VD: User đang xem file "SoK_Explainable_ML.pdf" và hỏi:
+        "Bài báo này có đề cập RAG không?"
+    
+    Điều này đảm bảo hệ thống:
+    - ✅ CHỈ tìm trong file này
+    - ✅ KHÔNG lấy thông tin từ file khác (PROJECT_OVERVIEW.md, etc.)
+    - ✅ Tránh lẫn lộn knowledge
+    
+    Args:
+        query: Câu hỏi ("Bài báo này nói về gì?")
+        document_id: UUID của document cụ thể
+        top_k: Số chunks cần lấy (mặc định 5)
+        
+    Returns:
+        List[RetrievedChunk] chỉ từ document này
+    """
+    if not query.strip():
+        raise ValueError("Query không được để trống")
+    if not document_id.strip():
+        raise ValueError("document_id không được để trống")
+
+    # Encode câu hỏi thành vector
+    model = _get_model()
+    query_vector = model.encode([query])[0]
+    query_vector = np.asarray(query_vector, dtype=np.float32)
+    query_embedding_list = query_vector.tolist()
+    
+    # Gọi RPC function với document filter
+    client = get_supabase_client()
+    response = client.rpc(
+        'match_embeddings_by_document',  # ⭐ Function mới có metadata filtering
+        {
+            'query_embedding': query_embedding_list,
+            'document_id_filter': document_id,  # ⭐ CHỈ tìm trong document này
+            'match_count': max(top_k, 1)
+        }
+    ).execute()
+    
+    # Parse kết quả
+    rows = response.data or []
+    if not rows:
+        return []
+    
+    chunks: list[RetrievedChunk] = []
+    for row in rows:
+        chunks.append(
+            RetrievedChunk(
+                content=row.get("content", ""),
+                chunk_index=row.get("chunk_index", 0) or 0,
+                page_number=row.get("page_number"),
+                similarity=row.get("similarity", 0.0) or 0.0,
+                metadata={
+                    "document_id": row.get("document_id"),
+                    "document_title": row.get("document_title"),
+                    "source": "internal"
+                }
             )
         )
     
