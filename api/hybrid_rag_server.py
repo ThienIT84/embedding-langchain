@@ -93,18 +93,20 @@ app.add_middleware(
 class HybridRetrieveRequest(BaseModel):
     query: str = Field(..., min_length=1, description="Câu hỏi người dùng")
     user_id: str = Field(..., description="ID người dùng để lọc document cá nhân")
+    document_id: Optional[str] = Field(None, description="Nếu có, chỉ tìm trong document này")
+    web_search_mode: str = Field("auto", description="Mode: auto, force-on, force-off")
     top_k: int = Field(5, ge=1, le=20)
-    include_web: bool = True
     web_max_results: int = 3
     internal_max_results: int = 5
 
 class HybridQueryRequest(BaseModel):
     query: str = Field(..., min_length=1)
     user_id: str
+    document_id: Optional[str] = None
+    web_search_mode: str = "auto"
     model: Optional[str] = None
     system_prompt: Optional[str] = None
     top_k: int = 5
-    include_web: bool = True
     web_max_results: int = 3
     internal_max_results: int = 5
 
@@ -113,8 +115,8 @@ class RAGChatRequest(BaseModel):
     query: str = Field(..., min_length=1)
     topK: Optional[int] = Field(5, ge=1, le=20)
     mode: Optional[str] = "fast"  # fast hoặc deepthink
-    includeWeb: Optional[bool] = False  # Bật web search
-    documentId: Optional[str] = None  # ⭐ NEW: Nếu có = chỉ tìm trong document này
+    webSearchMode: Optional[str] = "auto"  # ⭐ NEW: auto, force-on, force-off
+    documentId: Optional[str] = None  # ⭐ Nếu có = chỉ tìm trong document này
 
 # --- 7. Endpoints ---
 
@@ -138,14 +140,15 @@ async def hybrid_retrieve(request: HybridRetrieveRequest):
       - Frontend muốn tự gọi LLM và chỉ cần context
     """
     try:
-        logger.info(f"🔍 Retrieving for: '{request.query}' (User: {request.user_id})")
+        logger.info(f"🔍 Retrieving for: '{request.query}' (User: {request.user_id}, Mode: {request.web_search_mode})")
         
         # GỌI LOGIC TÌM KIẾM TRUNG TÂM (HybridRetriever)
         result = hybrid_retriever.retrieve(
             query=request.query,
             user_id=request.user_id,
+            document_id=request.document_id,
+            web_search_mode=request.web_search_mode,
             top_k=request.top_k,
-            include_web=request.include_web,
             web_max_results=request.web_max_results,
             internal_max_results=request.internal_max_results
         )
@@ -178,14 +181,15 @@ async def hybrid_query(request: HybridQueryRequest):
     Full Flow: Retrieve (Hybrid) -> Prompt -> LLM (Ollama/OpenAI) -> Answer.
     """
     try:
-        logger.info(f"🧠 Processing Query: '{request.query}'")
+        logger.info(f"🧠 Processing Query: '{request.query}' (Mode: {request.web_search_mode})")
 
         # 1. Retrieve Hybrid
         retrieval_result = hybrid_retriever.retrieve(
             query=request.query,
             user_id=request.user_id,
+            document_id=request.document_id,
+            web_search_mode=request.web_search_mode,
             top_k=request.top_k,
-            include_web=request.include_web,
             web_max_results=request.web_max_results,
             internal_max_results=request.internal_max_results
         )
@@ -233,7 +237,7 @@ async def hybrid_query(request: HybridQueryRequest):
 async def rag_chat_compatible(request: RAGChatRequest, authorization: Optional[str] = Header(None)):
     """
     Endpoint tương thích với frontend hiện tại.
-    Khi includeWeb=True, sẽ search cả web (Tavily) + internal documents.
+    ⭐ NEW: Dùng webSearchMode (auto/force-on/force-off) thay vì includeWeb boolean.
     """
     try:
         # Lấy user_id từ JWT token (Supabase)
@@ -242,65 +246,32 @@ async def rag_chat_compatible(request: RAGChatRequest, authorization: Optional[s
         
         # Extract token từ Authorization header
         user_id = None
-        # startwith kiểm tra chuỗi có bắt đầu bằng chuỗi "Bearer"
         if authorization and authorization.startswith('Bearer '): 
             token = authorization.replace('Bearer ', '')
             try:
-                # Decode JWT (không verify signature vì chỉ cần user_id)
-                # Trong production nên verify với Supabase JWT secret
                 decoded = jwt.decode(token, options={"verify_signature": False})
                 user_id = decoded.get('sub')  # 'sub' chứa user_id trong Supabase JWT
                 logger.info(f"✅ Extracted user_id from JWT: {user_id}")
             except Exception as e:
                 logger.warning(f"⚠️ Failed to decode JWT: {e}")
         
-        # Fallback nếu không có token hoặc decode fail
+        # Fallback nếu không có token
         if not user_id:
             user_id = "00000000-0000-0000-0000-000000000000"  # Default test user
             logger.warning(f"⚠️ Using fallback user_id: {user_id}")
         
-        logger.info(f"🔍 RAG Chat: '{request.query}' (includeWeb={request.includeWeb})")
+        logger.info(f"🔍 RAG Chat: '{request.query}' (webSearchMode={request.webSearchMode}, documentId={request.documentId})")
         
-        # Nếu includeWeb=True, dùng hybrid retrieval
-        if request.includeWeb:
-            logger.info("🌐 Web search ENABLED - Using Hybrid Retrieval")
-            retrieval_result = hybrid_retriever.retrieve(
-                query=request.query,
-                user_id=user_id,
-                document_id=request.documentId,  # ⭐ Pass document context (if any)
-                top_k=request.topK or 8,
-                include_web=True,
-                web_max_results=3,
-                internal_max_results=request.topK or 5
-            )
-        else:
-            # Chỉ search internal
-            logger.info("📚 Internal only - Using standard retrieval")
-            from src.retriever import retrieve_similar_chunks_by_user, retrieve_similar_chunks_by_document
-            from src.embedder import embed_text
-            
-            if request.documentId:
-                # ⭐ Document-specific search
-                logger.info(f"📄 Searching in specific document: {request.documentId}")
-                internal_chunks = retrieve_similar_chunks_by_document(
-                    query=request.query,
-                    document_id=request.documentId,
-                    top_k=request.topK or 5
-                )
-            else:
-                # Global search
-                internal_chunks = retrieve_similar_chunks_by_user(
-                    query=request.query,
-                    user_id=user_id,
-                    top_k=request.topK or 5
-                )
-            
-            # Convert to HybridRetrievalResult format
-            from src.hybrid_retriever import HybridRetrievalResult, RetrievedChunk
-            retrieval_result = HybridRetrievalResult(
-                sources=internal_chunks,
-                metadata={"internal_count": len(internal_chunks), "web_count": 0}
-            )
+        # ⭐ Luôn dùng hybrid retriever với smart mode resolution
+        retrieval_result = hybrid_retriever.retrieve(
+            query=request.query,
+            user_id=user_id,
+            document_id=request.documentId,
+            web_search_mode=request.webSearchMode or "auto",
+            top_k=request.topK or 8,
+            web_max_results=3,
+            internal_max_results=request.topK or 5
+        )
         
         # Format sources cho frontend
         sources = []

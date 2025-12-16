@@ -90,13 +90,13 @@ def retrieve_similar_chunks(query: str, document_id: str, top_k: int = 5) -> Lis
 
 def retrieve_similar_chunks_by_user(query: str, user_id: str, top_k: int = 5) -> List[RetrievedChunk]:
     """
-    QUY TRÌNH INTERNAL RETRIEVAL:
-    1. Input: query text và user_id.
-    2. Embedding: Chuyển query text thành vector (dùng model giống lúc ingest).
-    3. RPC Call: Gọi function 'match_embeddings_by_user' trong Supabase.
-       - Function này thực hiện Vector Similarity Search (Cosine Distance).
-       - Chỉ tìm trong các documents do user_id tạo.
-    4. Return: Danh sách các chunks tương đồng nhất.
+    Lấy top_k đoạn văn bản gần nhất với truy vấn từ TẤT CẢ documents của user.
+    
+    Thay vì search trong 1 document cụ thể, function này:
+    1. Encode câu hỏi thành vector embedding (768 chiều)
+    2. Gọi RPC function 'match_embeddings_by_user' trong Supabase
+    3. RPC function sẽ tìm các chunks tương đồng nhất trong TẤT CẢ documents của user
+    4. Trả về danh sách chunks đã được sort theo similarity (cao → thấp)
     
     Args:
         query: Câu hỏi của người dùng (VD: "Khái niệm OOP là gì?")
@@ -112,18 +112,18 @@ def retrieve_similar_chunks_by_user(query: str, user_id: str, top_k: int = 5) ->
     if not user_id.strip():
         raise ValueError("user_id không được để trống")
 
-    # --- BƯỚC 1: Encode câu hỏi thành vector embedding ---
+    # Bước 1: Encode câu hỏi thành vector embedding
     # Sử dụng sentence-transformers model (paraphrase-multilingual-mpnet-base-v2)
     # Output: vector 768 chiều
     model = _get_model()
     query_vector = model.encode([query])[0]  # Encode 1 câu → lấy vector đầu tiên
     query_vector = np.asarray(query_vector, dtype=np.float32)  # Chuyển sang float32
     
-    # --- BƯỚC 2: Chuyển numpy array thành Python list để gửi qua RPC ---
+    # Bước 2: Chuyển numpy array thành Python list để gửi qua RPC
     # Supabase RPC cần list, không nhận numpy array
     query_embedding_list = query_vector.tolist()
     
-    # --- BƯỚC 3: Gọi RPC function trong Supabase ---
+    # Bước 3: Gọi RPC function trong Supabase
     # RPC function sẽ:
     # - JOIN bảng document_embeddings với documents
     # - Filter theo created_by = user_id
@@ -140,13 +140,13 @@ def retrieve_similar_chunks_by_user(query: str, user_id: str, top_k: int = 5) ->
         }
     ).execute()
     
-    # --- BƯỚC 4: Parse kết quả từ RPC ---
+    # Bước 4: Parse kết quả từ RPC
     rows = response.data or []
     if not rows:
         # Không tìm thấy documents nào của user hoặc không có chunk tương đồng
         return []
     
-    # --- BƯỚC 5: Chuyển đổi kết quả thành RetrievedChunk objects ---
+    # Bước 5: Chuyển đổi kết quả thành RetrievedChunk objects
     # RPC đã tính similarity và sort rồi, chỉ cần parse data
     chunks: list[RetrievedChunk] = []
     for row in rows:
@@ -156,11 +156,6 @@ def retrieve_similar_chunks_by_user(query: str, user_id: str, top_k: int = 5) ->
                 chunk_index=row.get("chunk_index", 0) or 0,  # Thứ tự chunk trong document
                 page_number=row.get("page_number"),       # Số trang (có thể None)
                 similarity=row.get("similarity", 0.0) or 0.0,  # Điểm tương đồng (0-1)
-                metadata={
-                    "document_id": row.get("document_id"),
-                    "document_title": row.get("document_title"),
-                    "source": "internal"
-                }
             )
         )
     
