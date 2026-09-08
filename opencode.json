@@ -1,0 +1,25 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "agentsai/glm-5",
+  "provider": {
+    "agentsai": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Agents AI VN",
+      "options": {
+        "baseURL": "https://gateway.agents.ai.vn/v1"
+      },
+      "models": {
+        "glm-5": {
+          "name": "GLM-5"
+        },
+        "kimi-k2.5": {
+          "name": "Kimi K2.5"
+        },
+        "deepseek.v3.2": {
+          "name": "DeepSeek V3.2"
+        }
+      }
+    }
+  }
+}
+

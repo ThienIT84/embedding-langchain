@@ -76,3 +76,4 @@ dmypy.json
 # Temporary model downloads (optional - if too large)
 # models/
 # Downloads/
+.aider*
